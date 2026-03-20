@@ -1,14 +1,12 @@
 -- Load Rayfield UI Library
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
--- Store original head data for reverting
 local modifiedParts = {}
+local currentHeadSize = 4 -- Default size
 
 -- === Core Logic ===
-
 local function isPlayerCharacter(model)
     if not model or not model:IsA("Model") then return false end
     return Players:GetPlayerFromCharacter(model) ~= nil
@@ -22,19 +20,17 @@ end
 local function applyToPart(part)
     if not part or not part:IsA("BasePart") then return end
     if part.Name ~= "Head" then return end
-
     local model = part.Parent
     if isHumanoidModel(model) and not isPlayerCharacter(model) then
         if not modifiedParts[part] then
-            -- Save original values before modifying
             modifiedParts[part] = {
-                Size        = part.Size,
-                CanCollide  = part.CanCollide,
+                Size         = part.Size,
+                CanCollide   = part.CanCollide,
                 Transparency = part.Transparency,
             }
         end
         pcall(function()
-            part.Size         = Vector3.new(4, 4, 4)
+            part.Size         = Vector3.new(currentHeadSize, currentHeadSize, currentHeadSize)
             part.CanCollide   = false
             part.Transparency = 0.5
         end)
@@ -59,23 +55,29 @@ local function watchNameChanges(part, connections)
     table.insert(connections, conn)
 end
 
--- === Enable / Disable ===
+-- === Apply size to all currently modified parts ===
+local function refreshAllModifiedParts()
+    for part, _ in pairs(modifiedParts) do
+        pcall(function()
+            if part and part.Parent then
+                part.Size = Vector3.new(currentHeadSize, currentHeadSize, currentHeadSize)
+            end
+        end)
+    end
+end
 
+-- === Enable / Disable ===
 local activeConnections = {}
 local isEnabled = false
 
 local function enableScript()
     isEnabled = true
-
-    -- Apply to existing descendants
     for _, desc in ipairs(Workspace:GetDescendants()) do
         applyToPart(desc)
         if desc:IsA("BasePart") then
             watchNameChanges(desc, activeConnections)
         end
     end
-
-    -- Watch for new descendants
     local addedConn = Workspace.DescendantAdded:Connect(function(desc)
         if not isEnabled then return end
         applyToPart(desc)
@@ -88,14 +90,10 @@ end
 
 local function disableScript()
     isEnabled = false
-
-    -- Disconnect all listeners
     for _, conn in ipairs(activeConnections) do
         conn:Disconnect()
     end
     activeConnections = {}
-
-    -- Revert all modified parts
     for part, original in pairs(modifiedParts) do
         revertPart(part, original)
     end
@@ -103,28 +101,45 @@ local function disableScript()
 end
 
 -- === Rayfield UI ===
-
 local Window = Rayfield:CreateWindow({
-    Name             = "NIGGUS EPSTEIN",
+    Name             = "Examination Hitboxes Script",
     LoadingTitle     = "Loading...",
-    LoadingSubtitle  = "by PDIDDY X EPSTEIN",
+    LoadingSubtitle  = "By YnoYxs and fofka889",
     ConfigurationSaving = {
-        Enabled  = false,
+        Enabled = false,
     },
     KeySystem = false,
 })
 
 local Tab = Window:CreateTab("Main", 4483362458)
 
+-- Toggle
 Tab:CreateToggle({
-    Name        = "Big Dick Mode",
+    Name         = "Enable Head Hitboxes",
     CurrentValue = false,
-    Flag        = "BigHeadToggle",
-    Callback    = function(value)
+    Flag         = "BigHeadToggle",
+    Callback     = function(value)
         if value then
             enableScript()
         else
             disableScript()
+        end
+    end,
+})
+
+-- Head Size Input
+Tab:CreateInput({
+    Name        = "Head Hitboxes Size",
+    PlaceholderText = "Enter size (default: 4)",
+    RemoveTextAfterFocusLost = false,
+    Callback    = function(value)
+        local num = tonumber(value)
+        if num and num > 0 then
+            currentHeadSize = num
+            -- If script is active, apply new size immediately
+            if isEnabled then
+                refreshAllModifiedParts()
+            end
         end
     end,
 })
