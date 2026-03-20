@@ -105,9 +105,9 @@ end
 -- === Rayfield UI ===
 
 local Window = Rayfield:CreateWindow({
-    Name             = "NPC Big Head",
-    LoadingTitle     = "NPC Big Head",
-    LoadingSubtitle  = "by Your Name",
+    Name             = "NIGGUS EPSTEIN",
+    LoadingTitle     = "Loading...",
+    LoadingSubtitle  = "by PDIDDY X EPSTEIN",
     ConfigurationSaving = {
         Enabled  = false,
     },
@@ -117,7 +117,7 @@ local Window = Rayfield:CreateWindow({
 local Tab = Window:CreateTab("Main", 4483362458)
 
 Tab:CreateToggle({
-    Name        = "Big Head Mode",
+    Name        = "Big Dick Mode",
     CurrentValue = false,
     Flag        = "BigHeadToggle",
     Callback    = function(value)
