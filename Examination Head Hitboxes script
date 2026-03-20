@@ -4,14 +4,183 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 local modifiedParts = {}
-local currentHeadSize = 4 -- Default size
+local currentHeadSize = 4
 
--- === Core Logic ===
-local function isPlayerCharacter(model)
-    if not model or not model:IsA("Model") then return false end
-    return Players:GetPlayerFromCharacter(model) ~= nil
+-- === ESP Config ===
+local ESPConfig = {
+    globalDistance = 1000,
+    Zombies = {
+        enabled = false,
+        showHealth = true,
+        showNames = true,
+        showDistance = true,
+    },
+    Players = {
+        enabled = false,
+        showHealth = true,
+        showNames = true,
+        showDistance = true,
+        showTeamColor = true,
+    },
+    Monsters = {
+        enabled = false,
+        showHealth = true,
+        showNames = true,
+        showDistance = true,
+        dave = { enabled = true },
+        infected = { enabled = true },
+    },
+    Loot = {
+        enabled = false,
+        showNames = true,
+        showDistance = true,
+        lootCrate = { enabled = true },
+        lootBoxModel = { enabled = true },
+        landmine = { enabled = true },
+    },
+}
+
+-- === ESP Highlight Tracking ===
+local espHighlights = {}
+
+local ZombieColors = {
+    lurker = Color3.fromRGB(255, 0, 0),
+    gunner = Color3.fromRGB(255, 100, 0),
+    shielder = Color3.fromRGB(0, 0, 255),
+    slasher = Color3.fromRGB(255, 0, 255),
+    bomber = Color3.fromRGB(255, 255, 0),
+    toxic = Color3.fromRGB(0, 255, 0),
+    riser = Color3.fromRGB(255, 165, 0),
+    mutant = Color3.fromRGB(128, 0, 128),
+    chainsaw = Color3.fromRGB(255, 0, 128),
+    chemical = Color3.fromRGB(0, 128, 255),
+    dave = Color3.fromRGB(255, 0, 255),
+    infected = Color3.fromRGB(0, 255, 0),
+}
+
+local ZombiePatterns = {
+    {"chemical", "chemical"}, {"lurker", "lurker"}, {"gunner", "gunner"},
+    {"shielder", "shielder"}, {"slasher", "slasher"}, {"bomber", "bomber"},
+    {"toxic", "toxic"}, {"riser", "riser"}, {"mutant", "mutant"},
+    {"chainsaw", "chainsaw"}, {"dave", "dave"}, {"infected", "infected"},
+}
+
+local ExcludedSet = {
+    deadcitylurker=true, informant=true, npc=true, ammobox=true,
+    gate=true, door=true, button=true, generator=true, corpse=true, mutantcorpse=true
+}
+
+local function isExcluded(name)
+    if not name then return true end
+    local lower = string.lower(name)
+    if ExcludedSet[lower] then return true end
+    for k in pairs(ExcludedSet) do
+        if string.find(lower, k, 1, true) then return true end
+    end
+    return false
 end
 
+local function isPlayerCharacter(model)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character == model then return true end
+    end
+    return false
+end
+
+local function getZombieType(obj)
+    if not obj or not obj.Name then return nil end
+    local name = string.lower(obj.Name)
+    for _, pattern in ipairs(ZombiePatterns) do
+        if string.find(name, pattern[1], 1, true) then return pattern[2] end
+    end
+    return nil
+end
+
+local function addHighlight(obj, color)
+    if espHighlights[obj] then return end
+    local h = Instance.new("Highlight")
+    h.FillColor = color
+    h.OutlineColor = Color3.fromRGB(255, 255, 255)
+    h.FillTransparency = 0.4
+    h.OutlineTransparency = 0
+    h.Parent = obj
+    espHighlights[obj] = h
+end
+
+local function removeAllHighlights()
+    for obj, h in pairs(espHighlights) do
+        if h and h.Parent then h:Destroy() end
+        espHighlights[obj] = nil
+    end
+end
+
+local function scanAndApplyESP()
+    removeAllHighlights()
+
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") then
+            -- Zombies
+            if ESPConfig.Zombies.enabled then
+                local zt = getZombieType(obj)
+                if zt and not isExcluded(obj.Name) and not isPlayerCharacter(obj) then
+                    local color = ZombieColors[zt] or Color3.fromRGB(255, 0, 0)
+                    addHighlight(obj, color)
+                end
+            end
+
+            -- Players
+            if ESPConfig.Players.enabled then
+                local player = Players:GetPlayerFromCharacter(obj)
+                if player and player ~= Players.LocalPlayer then
+                    local localPlayer = Players.LocalPlayer
+                    local color
+                    if ESPConfig.Players.showTeamColor then
+                        local friendly = player.Team and localPlayer.Team and player.Team == localPlayer.Team
+                        color = friendly and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                    else
+                        color = Color3.fromRGB(0, 255, 255)
+                    end
+                    addHighlight(obj, color)
+                end
+            end
+
+            -- Monsters (Dave / Infected)
+            if ESPConfig.Monsters.enabled then
+                local name = string.lower(obj.Name)
+                if ESPConfig.Monsters.dave.enabled and string.find(name, "dave", 1, true) then
+                    addHighlight(obj, Color3.fromRGB(255, 0, 255))
+                elseif ESPConfig.Monsters.infected.enabled and string.find(name, "infected", 1, true) then
+                    addHighlight(obj, Color3.fromRGB(0, 255, 0))
+                end
+            end
+
+            -- Loot
+            if ESPConfig.Loot.enabled then
+                local name = string.lower(obj.Name)
+                if ESPConfig.Loot.lootCrate.enabled and string.find(name, "lootcrate", 1, true) then
+                    addHighlight(obj, Color3.fromRGB(255, 165, 0))
+                elseif ESPConfig.Loot.lootBoxModel.enabled and string.find(name, "lootbox", 1, true) then
+                    addHighlight(obj, Color3.fromRGB(255, 200, 50))
+                end
+            end
+        end
+
+        -- Landmine (BasePart)
+        if ESPConfig.Loot.enabled and ESPConfig.Loot.landmine.enabled then
+            if obj:IsA("BasePart") and obj.Name == "Landmine" then
+                local localChar = Players.LocalPlayer.Character
+                if localChar then
+                    local hrp = localChar:FindFirstChild("HumanoidRootPart")
+                    if hrp and (obj.Position - hrp.Position).Magnitude <= 20 then
+                        addHighlight(obj.Parent or obj, Color3.fromRGB(255, 0, 0))
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- === NPC Head Logic ===
 local function isHumanoidModel(model)
     if not model or not model:IsA("Model") then return false end
     return model:FindFirstChildWhichIsA("Humanoid") ~= nil
@@ -21,17 +190,17 @@ local function applyToPart(part)
     if not part or not part:IsA("BasePart") then return end
     if part.Name ~= "Head" then return end
     local model = part.Parent
-    if isHumanoidModel(model) and not isPlayerCharacter(model) then
+    if isHumanoidModel(model) and not Players:GetPlayerFromCharacter(model) then
         if not modifiedParts[part] then
             modifiedParts[part] = {
-                Size         = part.Size,
-                CanCollide   = part.CanCollide,
+                Size = part.Size,
+                CanCollide = part.CanCollide,
                 Transparency = part.Transparency,
             }
         end
         pcall(function()
-            part.Size         = Vector3.new(currentHeadSize, currentHeadSize, currentHeadSize)
-            part.CanCollide   = false
+            part.Size = Vector3.new(currentHeadSize, currentHeadSize, currentHeadSize)
+            part.CanCollide = false
             part.Transparency = 0.5
         end)
     end
@@ -40,8 +209,8 @@ end
 local function revertPart(part, original)
     pcall(function()
         if part and part.Parent then
-            part.Size         = original.Size
-            part.CanCollide   = original.CanCollide
+            part.Size = original.Size
+            part.CanCollide = original.CanCollide
             part.Transparency = original.Transparency
         end
     end)
@@ -55,9 +224,8 @@ local function watchNameChanges(part, connections)
     table.insert(connections, conn)
 end
 
--- === Apply size to all currently modified parts ===
 local function refreshAllModifiedParts()
-    for part, _ in pairs(modifiedParts) do
+    for part in pairs(modifiedParts) do
         pcall(function()
             if part and part.Parent then
                 part.Size = Vector3.new(currentHeadSize, currentHeadSize, currentHeadSize)
@@ -66,7 +234,6 @@ local function refreshAllModifiedParts()
     end
 end
 
--- === Enable / Disable ===
 local activeConnections = {}
 local isEnabled = false
 
@@ -74,72 +241,203 @@ local function enableScript()
     isEnabled = true
     for _, desc in ipairs(Workspace:GetDescendants()) do
         applyToPart(desc)
-        if desc:IsA("BasePart") then
-            watchNameChanges(desc, activeConnections)
-        end
+        if desc:IsA("BasePart") then watchNameChanges(desc, activeConnections) end
     end
     local addedConn = Workspace.DescendantAdded:Connect(function(desc)
         if not isEnabled then return end
         applyToPart(desc)
-        if desc:IsA("BasePart") then
-            watchNameChanges(desc, activeConnections)
-        end
+        if desc:IsA("BasePart") then watchNameChanges(desc, activeConnections) end
     end)
     table.insert(activeConnections, addedConn)
 end
 
 local function disableScript()
     isEnabled = false
-    for _, conn in ipairs(activeConnections) do
-        conn:Disconnect()
-    end
+    for _, conn in ipairs(activeConnections) do conn:Disconnect() end
     activeConnections = {}
-    for part, original in pairs(modifiedParts) do
-        revertPart(part, original)
-    end
+    for part, original in pairs(modifiedParts) do revertPart(part, original) end
     modifiedParts = {}
 end
 
 -- === Rayfield UI ===
 local Window = Rayfield:CreateWindow({
-    Name             = "Examination Hitboxes Script",
-    LoadingTitle     = "Loading...",
-    LoadingSubtitle  = "By YnoYxs and fofka889",
-    ConfigurationSaving = {
-        Enabled = false,
-    },
+    Name = "P DIDDY GUI",
+    LoadingTitle = "Loading...",
+    LoadingSubtitle = "by Flare X Chimera",
+    ConfigurationSaving = { Enabled = false },
     KeySystem = false,
 })
 
-local Tab = Window:CreateTab("Main", 4483362458)
+-- === Main Tab ===
+local MainTab = Window:CreateTab("Main", 4483362458)
 
--- Toggle
-Tab:CreateToggle({
-    Name         = "Enable Head Hitboxes",
+MainTab:CreateToggle({
+    Name = "Enable Head Hitboxes",
     CurrentValue = false,
-    Flag         = "BigHeadToggle",
-    Callback     = function(value)
-        if value then
-            enableScript()
-        else
-            disableScript()
+    Flag = "BigHeadToggle",
+    Callback = function(value)
+        if value then enableScript() else disableScript() end
+    end,
+})
+
+MainTab:CreateInput({
+    Name = "Head Hitbox Size",
+    PlaceholderText = "Enter size (default: 4)",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(value)
+        local num = tonumber(value)
+        if num and num > 0 then
+            currentHeadSize = num
+            if isEnabled then refreshAllModifiedParts() end
         end
     end,
 })
 
--- Head Size Input
-Tab:CreateInput({
-    Name        = "Head Hitboxes Size",
-    PlaceholderText = "Enter size (default: 4)",
-    RemoveTextAfterFocusLost = false,
-    Callback    = function(value)
-        local num = tonumber(value)
-        if num and num > 0 then
-            currentHeadSize = num
-            -- If script is active, apply new size immediately
-            if isEnabled then
-                refreshAllModifiedParts()
-            end
-        end
+-- === ESP Tab ===
+local ESPTab = Window:CreateTab("ESP", 4483362458)
+
+ESPTab:CreateToggle({
+    Name = "Enable All ESP",
+    CurrentValue = false,
+    Flag = "EnableAllESP",
+    Callback = function(value)
+        ESPConfig.Zombies.enabled = value
+        ESPConfig.Players.enabled = value
+        ESPConfig.Monsters.enabled = value
+        ESPConfig.Loot.enabled = value
+        scanAndApplyESP()
+    end,
+})
+
+-- Zombies section
+ESPTab:CreateSection("Zombies")
+
+ESPTab:CreateToggle({
+    Name = "ESP Zombies",
+    CurrentValue = false,
+    Flag = "ESPZombies",
+    Callback = function(value)
+        ESPConfig.Zombies.enabled = value
+        scanAndApplyESP()
+    end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Show Zombie Names",
+    CurrentValue = true,
+    Flag = "ZombieNames",
+    Callback = function(value) ESPConfig.Zombies.showNames = value end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Show Zombie Distance",
+    CurrentValue = true,
+    Flag = "ZombieDist",
+    Callback = function(value) ESPConfig.Zombies.showDistance = value end,
+})
+
+-- Players section
+ESPTab:CreateSection("Players")
+
+ESPTab:CreateToggle({
+    Name = "ESP Players",
+    CurrentValue = false,
+    Flag = "ESPPlayers",
+    Callback = function(value)
+        ESPConfig.Players.enabled = value
+        scanAndApplyESP()
+    end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Show Team Colors",
+    CurrentValue = true,
+    Flag = "TeamColors",
+    Callback = function(value)
+        ESPConfig.Players.showTeamColor = value
+        scanAndApplyESP()
+    end,
+})
+
+-- Monsters section
+ESPTab:CreateSection("Monsters")
+
+ESPTab:CreateToggle({
+    Name = "ESP Monsters",
+    CurrentValue = false,
+    Flag = "ESPMonsters",
+    Callback = function(value)
+        ESPConfig.Monsters.enabled = value
+        scanAndApplyESP()
+    end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Dave",
+    CurrentValue = true,
+    Flag = "ESPDave",
+    Callback = function(value)
+        ESPConfig.Monsters.dave.enabled = value
+        scanAndApplyESP()
+    end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Infected",
+    CurrentValue = true,
+    Flag = "ESPInfected",
+    Callback = function(value)
+        ESPConfig.Monsters.infected.enabled = value
+        scanAndApplyESP()
+    end,
+})
+
+-- Loot section
+ESPTab:CreateSection("Loot")
+
+ESPTab:CreateToggle({
+    Name = "ESP Loot",
+    CurrentValue = false,
+    Flag = "ESPLoot",
+    Callback = function(value)
+        ESPConfig.Loot.enabled = value
+        scanAndApplyESP()
+    end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Loot Crates",
+    CurrentValue = true,
+    Flag = "ESPLootCrate",
+    Callback = function(value)
+        ESPConfig.Loot.lootCrate.enabled = value
+        scanAndApplyESP()
+    end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Loot Boxes",
+    CurrentValue = true,
+    Flag = "ESPLootBox",
+    Callback = function(value)
+        ESPConfig.Loot.lootBoxModel.enabled = value
+        scanAndApplyESP()
+    end,
+})
+
+ESPTab:CreateToggle({
+    Name = "Landmines (20m radius)",
+    CurrentValue = true,
+    Flag = "ESPLandmine",
+    Callback = function(value)
+        ESPConfig.Loot.landmine.enabled = value
+        scanAndApplyESP()
+    end,
+})
+
+ESPTab:CreateButton({
+    Name = "Refresh ESP",
+    Callback = function()
+        scanAndApplyESP()
     end,
 })
