@@ -1,0 +1,130 @@
+-- Load Rayfield UI Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+-- Store original head data for reverting
+local modifiedParts = {}
+
+-- === Core Logic ===
+
+local function isPlayerCharacter(model)
+    if not model or not model:IsA("Model") then return false end
+    return Players:GetPlayerFromCharacter(model) ~= nil
+end
+
+local function isHumanoidModel(model)
+    if not model or not model:IsA("Model") then return false end
+    return model:FindFirstChildWhichIsA("Humanoid") ~= nil
+end
+
+local function applyToPart(part)
+    if not part or not part:IsA("BasePart") then return end
+    if part.Name ~= "Head" then return end
+
+    local model = part.Parent
+    if isHumanoidModel(model) and not isPlayerCharacter(model) then
+        if not modifiedParts[part] then
+            -- Save original values before modifying
+            modifiedParts[part] = {
+                Size        = part.Size,
+                CanCollide  = part.CanCollide,
+                Transparency = part.Transparency,
+            }
+        end
+        pcall(function()
+            part.Size         = Vector3.new(4, 4, 4)
+            part.CanCollide   = false
+            part.Transparency = 0.5
+        end)
+    end
+end
+
+local function revertPart(part, original)
+    pcall(function()
+        if part and part.Parent then
+            part.Size         = original.Size
+            part.CanCollide   = original.CanCollide
+            part.Transparency = original.Transparency
+        end
+    end)
+end
+
+local function watchNameChanges(part, connections)
+    if not part or not part:IsA("BasePart") then return end
+    local conn = part:GetPropertyChangedSignal("Name"):Connect(function()
+        applyToPart(part)
+    end)
+    table.insert(connections, conn)
+end
+
+-- === Enable / Disable ===
+
+local activeConnections = {}
+local isEnabled = false
+
+local function enableScript()
+    isEnabled = true
+
+    -- Apply to existing descendants
+    for _, desc in ipairs(Workspace:GetDescendants()) do
+        applyToPart(desc)
+        if desc:IsA("BasePart") then
+            watchNameChanges(desc, activeConnections)
+        end
+    end
+
+    -- Watch for new descendants
+    local addedConn = Workspace.DescendantAdded:Connect(function(desc)
+        if not isEnabled then return end
+        applyToPart(desc)
+        if desc:IsA("BasePart") then
+            watchNameChanges(desc, activeConnections)
+        end
+    end)
+    table.insert(activeConnections, addedConn)
+end
+
+local function disableScript()
+    isEnabled = false
+
+    -- Disconnect all listeners
+    for _, conn in ipairs(activeConnections) do
+        conn:Disconnect()
+    end
+    activeConnections = {}
+
+    -- Revert all modified parts
+    for part, original in pairs(modifiedParts) do
+        revertPart(part, original)
+    end
+    modifiedParts = {}
+end
+
+-- === Rayfield UI ===
+
+local Window = Rayfield:CreateWindow({
+    Name             = "NPC Big Head",
+    LoadingTitle     = "NPC Big Head",
+    LoadingSubtitle  = "by Your Name",
+    ConfigurationSaving = {
+        Enabled  = false,
+    },
+    KeySystem = false,
+})
+
+local Tab = Window:CreateTab("Main", 4483362458)
+
+Tab:CreateToggle({
+    Name        = "Big Head Mode",
+    CurrentValue = false,
+    Flag        = "BigHeadToggle",
+    Callback    = function(value)
+        if value then
+            enableScript()
+        else
+            disableScript()
+        end
+    end,
+})
