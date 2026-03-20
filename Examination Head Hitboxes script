@@ -5,6 +5,8 @@ local Workspace = game:GetService("Workspace")
 
 local modifiedParts = {}
 local currentHeadSize = 4
+local currentHeadTransparency = 0.5
+local affectPlayers = false
 
 -- === ESP Config ===
 local ESPConfig = {
@@ -119,7 +121,6 @@ local function scanAndApplyESP()
 
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if obj:IsA("Model") then
-            -- Zombies
             if ESPConfig.Zombies.enabled then
                 local zt = getZombieType(obj)
                 if zt and not isExcluded(obj.Name) and not isPlayerCharacter(obj) then
@@ -128,7 +129,6 @@ local function scanAndApplyESP()
                 end
             end
 
-            -- Players
             if ESPConfig.Players.enabled then
                 local player = Players:GetPlayerFromCharacter(obj)
                 if player and player ~= Players.LocalPlayer then
@@ -144,7 +144,6 @@ local function scanAndApplyESP()
                 end
             end
 
-            -- Monsters (Dave / Infected)
             if ESPConfig.Monsters.enabled then
                 local name = string.lower(obj.Name)
                 if ESPConfig.Monsters.dave.enabled and string.find(name, "dave", 1, true) then
@@ -154,7 +153,6 @@ local function scanAndApplyESP()
                 end
             end
 
-            -- Loot
             if ESPConfig.Loot.enabled then
                 local name = string.lower(obj.Name)
                 if ESPConfig.Loot.lootCrate.enabled and string.find(name, "lootcrate", 1, true) then
@@ -165,7 +163,6 @@ local function scanAndApplyESP()
             end
         end
 
-        -- Landmine (BasePart)
         if ESPConfig.Loot.enabled and ESPConfig.Loot.landmine.enabled then
             if obj:IsA("BasePart") and obj.Name == "Landmine" then
                 local localChar = Players.LocalPlayer.Character
@@ -186,22 +183,33 @@ local function isHumanoidModel(model)
     return model:FindFirstChildWhichIsA("Humanoid") ~= nil
 end
 
+local function shouldAffectModel(model)
+    if not isHumanoidModel(model) then return false end
+    local isPlayer = Players:GetPlayerFromCharacter(model) ~= nil
+    if isPlayer then
+        -- Only affect players (excluding local player) if toggle is on
+        if not affectPlayers then return false end
+        if model == Players.LocalPlayer.Character then return false end
+    end
+    return true
+end
+
 local function applyToPart(part)
     if not part or not part:IsA("BasePart") then return end
     if part.Name ~= "Head" then return end
     local model = part.Parent
-    if isHumanoidModel(model) and not Players:GetPlayerFromCharacter(model) then
+    if shouldAffectModel(model) then
         if not modifiedParts[part] then
             modifiedParts[part] = {
-                Size = part.Size,
-                CanCollide = part.CanCollide,
+                Size        = part.Size,
+                CanCollide  = part.CanCollide,
                 Transparency = part.Transparency,
             }
         end
         pcall(function()
-            part.Size = Vector3.new(currentHeadSize, currentHeadSize, currentHeadSize)
-            part.CanCollide = false
-            part.Transparency = 0.5
+            part.Size         = Vector3.new(currentHeadSize, currentHeadSize, currentHeadSize)
+            part.CanCollide   = false
+            part.Transparency = currentHeadTransparency
         end)
     end
 end
@@ -209,8 +217,8 @@ end
 local function revertPart(part, original)
     pcall(function()
         if part and part.Parent then
-            part.Size = original.Size
-            part.CanCollide = original.CanCollide
+            part.Size         = original.Size
+            part.CanCollide   = original.CanCollide
             part.Transparency = original.Transparency
         end
     end)
@@ -228,7 +236,8 @@ local function refreshAllModifiedParts()
     for part in pairs(modifiedParts) do
         pcall(function()
             if part and part.Parent then
-                part.Size = Vector3.new(currentHeadSize, currentHeadSize, currentHeadSize)
+                part.Size         = Vector3.new(currentHeadSize, currentHeadSize, currentHeadSize)
+                part.Transparency = currentHeadTransparency
             end
         end)
     end
@@ -293,6 +302,33 @@ MainTab:CreateInput({
     end,
 })
 
+MainTab:CreateInput({
+    Name = "Hitbox Transparency",
+    PlaceholderText = "Enter 0 (solid) to 1 (invisible), default: 0.5",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(value)
+        local num = tonumber(value)
+        if num and num >= 0 and num <= 1 then
+            currentHeadTransparency = num
+            if isEnabled then refreshAllModifiedParts() end
+        end
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "Affect Players",
+    CurrentValue = false,
+    Flag = "AffectPlayersToggle",
+    Callback = function(value)
+        affectPlayers = value
+        -- If big head mode is active, rerun to apply/remove player heads
+        if isEnabled then
+            disableScript()
+            enableScript()
+        end
+    end,
+})
+
 -- === ESP Tab ===
 local ESPTab = Window:CreateTab("ESP", 4483362458)
 
@@ -309,7 +345,6 @@ ESPTab:CreateToggle({
     end,
 })
 
--- Zombies section
 ESPTab:CreateSection("Zombies")
 
 ESPTab:CreateToggle({
@@ -336,7 +371,6 @@ ESPTab:CreateToggle({
     Callback = function(value) ESPConfig.Zombies.showDistance = value end,
 })
 
--- Players section
 ESPTab:CreateSection("Players")
 
 ESPTab:CreateToggle({
@@ -359,7 +393,6 @@ ESPTab:CreateToggle({
     end,
 })
 
--- Monsters section
 ESPTab:CreateSection("Monsters")
 
 ESPTab:CreateToggle({
@@ -392,7 +425,6 @@ ESPTab:CreateToggle({
     end,
 })
 
--- Loot section
 ESPTab:CreateSection("Loot")
 
 ESPTab:CreateToggle({
